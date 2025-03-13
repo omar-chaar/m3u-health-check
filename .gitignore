@@ -45,5 +45,6 @@ pip-delete-this-directory.txt
 logs/
 
 #Specific to this project
-alive_channels.m3u
+*.m3u8
+*.m3u
 /diagnostics
