@@ -1,4 +1,4 @@
-# Python cache and bytecode
+git push --force-with-lease origin main# Python cache and bytecode
 __pycache__/
 *.py[cod]
 *$py.class
