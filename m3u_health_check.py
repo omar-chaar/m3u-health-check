@@ -5,6 +5,7 @@ import requests
 import sys
 from urllib.parse import urlparse
 import time
+import os
 
 try:
     import config
@@ -19,6 +20,9 @@ logging.basicConfig(
 
 TIMEOUT = 10
 RETRIES = 10
+
+OUTPUT_DIR = "output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def get_retry_delay():
@@ -224,7 +228,8 @@ def write_channels_to_m3u(
     status_filter=None,
     mode="w",
 ):
-    with open(filename, mode, encoding="utf-8") as f:
+    filepath = os.path.join(OUTPUT_DIR, filename)
+    with open(filepath, mode, encoding="utf-8") as f:
         if mode == "w":
             f.write("#EXTM3U\n")
         for name, url, status in channels:
@@ -287,49 +292,20 @@ def main():
             "alive_channels.m3u", playlist_channels, channel_map, extinf_map, extgrp_map
         )
         print(
-            f"Wrote {len(playlist_channels)} alive or unstable channels to alive_channels.m3u"
+            f"Wrote {len(playlist_channels)} alive or unstable channels to {os.path.join(OUTPUT_DIR, 'alive_channels.m3u')}"
         )
     else:
         print("No alive or unstable channels found.")
 
     if dead_channels:
-        with open("dead_channels.m3u", "w", encoding="utf-8") as f:
-            f.write("#EXTM3U\n")
-            for name, url, status in dead_channels:
-                ch = channel_map.get(url)
-                extinf = extinf_map.get(url)
-                extgrp = extgrp_map.get(url)
-                if extinf:
-                    extinf_parts = extinf.split(",", 1)
-                    if len(extinf_parts) > 1:
-                        f.write(f"{extinf_parts[0]},{name}\n")
-                    else:
-                        f.write(f"{extinf},{name}\n")
-                else:
-                    extinf_attrs = []
-                    if hasattr(ch, "tvg_id") and ch.tvg_id:
-                        extinf_attrs.append(f'tvg-id="{ch.tvg_id}"')
-                    if hasattr(ch, "tvg_name") and ch.tvg_name:
-                        extinf_attrs.append(f'tvg-name="{ch.tvg_name}"')
-                    if hasattr(ch, "tvg_logo") and ch.tvg_logo:
-                        extinf_attrs.append(f'tvg-logo="{ch.tvg_logo}"')
-                    group = (
-                        getattr(ch, "group_title", None)
-                        or getattr(ch, "group", None)
-                        or ""
-                    )
-                    if group:
-                        extinf_attrs.append(f'group-title="{group}"')
-                    extinf_str = " ".join(extinf_attrs)
-                    f.write(f"#EXTINF:-1 {extinf_str},{name}\n")
-                if extgrp:
-                    f.write(f"#EXTGRP:{extgrp}\n")
-                f.write(f"{url}\n")
-        print(f"Wrote {len(dead_channels)} to dead_channels.m3u")
+        write_channels_to_m3u(
+            "dead_channels.m3u", dead_channels, channel_map, extinf_map, extgrp_map
+        )
+        print(
+            f"Wrote {len(dead_channels)} dead channels to {os.path.join(OUTPUT_DIR, 'dead_channels.m3u')}"
+        )
     else:
         print("No dead channels found.")
-
-    import os
 
     if unstable_channels:
         logging.info(
@@ -344,8 +320,6 @@ def main():
         )
         if answer == "y":
             longer_timeout = 30
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-
             retest_results = []
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_channel = {
@@ -362,16 +336,12 @@ def main():
                     name, url, _ = future_to_channel[future]
                     status2 = future.result()
                     retest_results.append((name, url, status2))
-            if os.path.exists("unstable_channels.m3u"):
-                os.remove("unstable_channels.m3u")
             write_channels_to_m3u(
                 "unstable_channels.m3u",
                 [r for r in retest_results if r[2] == "ALIVE"],
                 channel_map,
                 extinf_map,
                 extgrp_map,
-                status_filter=None,
-                mode="w",
             )
             write_channels_to_m3u(
                 "dead_channels.m3u",
@@ -379,7 +349,6 @@ def main():
                 channel_map,
                 extinf_map,
                 extgrp_map,
-                status_filter=None,
                 mode="a",
             )
 
