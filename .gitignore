@@ -39,3 +39,10 @@ pip-delete-this-directory.txt
 
 # Pyre
 .pyre/
+
+# Logging
+*.log
+logs/
+
+#Specific to this project
+alive_channels.m3u
