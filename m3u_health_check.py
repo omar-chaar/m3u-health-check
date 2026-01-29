@@ -40,77 +40,78 @@ def get_max_workers():
     return int(user_input)
 
 
-def is_channel_alive(url, retry_delay):
+def is_channel_alive(url, retry_delay, diagnostics_dir=None):
     import subprocess
+    import json
+    import os
 
     auth = None
     if config and hasattr(config, "USERNAME") and hasattr(config, "PASSWORD"):
         auth = (config.USERNAME, config.PASSWORD)
+
+    headers = {"User-Agent": "VLC/3.0.11 LibVLC/3.0.11"}
+
+    attempts = 0
+    ffprobe_success = 0
+    diagnostics = None
     for attempt in range(RETRIES):
+        attempts += 1
         try:
-            logging.debug(f"Attempt {attempt+1}/{RETRIES} for URL: {url}")
-            resp = requests.get(
-                url, timeout=TIMEOUT, allow_redirects=True, auth=auth, stream=True
+            ffprobe_cmd = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_streams",
+                "-show_format",
+                "-print_format",
+                "json",
+                "-user_agent",
+                headers["User-Agent"],
+                "-headers",
+                "Referer: http://localhost/\r\nOrigin: http://localhost/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nConnection: keep-alive\r\n",
+                "-timeout",
+                "5000000",
+                url,
+            ]
+            ffprobe_result = subprocess.run(
+                ffprobe_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=7,
             )
-            logging.debug(f"Status Code: {resp.status_code}, Final URL: {resp.url}")
-            content_type = resp.headers.get("Content-Type", "").lower()
-            logging.debug(f"Content-Type: {content_type}")
-            has_chunk = False
-            try:
-                chunk = next(resp.iter_content(chunk_size=1024))
-                if chunk:
-                    has_chunk = True
-            except Exception as e:
-                logging.debug(f"Error reading chunk: {e}")
-                has_chunk = False
-            if resp.status_code == 200 and (
-                any(
-                    x in content_type
-                    for x in [
-                        "application/vnd.apple.mpegurl",
-                        "application/x-mpegurl",
-                        "application/octet-stream",
-                        "video/",
-                        "audio/",
-                        "mpegurl",
-                    ]
-                )
-                or has_chunk
-            ):
+            if ffprobe_result.returncode == 0:
+                ffprobe_success += 1
                 try:
-                    ffprobe_cmd = [
-                        "ffprobe",
-                        "-v",
-                        "error",
-                        "-show_streams",
-                        "-i",
-                        url,
-                    ]
-                    ffprobe_result = subprocess.run(
-                        ffprobe_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        timeout=10,
-                    )
-                    if ffprobe_result.returncode == 0:
-                        logging.debug("ffprobe succeeded, marking as ALIVE.")
-                        resp.close()
-                        return "ALIVE"
-                    else:
-                        logging.debug(
-                            f"ffprobe failed: {ffprobe_result.stderr.decode(errors='ignore')}"
-                        )
-                except subprocess.TimeoutExpired:
-                    logging.debug("ffprobe timed out.")
-                except Exception as e:
-                    logging.debug(f"Error running ffprobe: {e}")
-            resp.close()
+                    diagnostics = json.loads(ffprobe_result.stdout.decode())
+                except Exception:
+                    diagnostics = None
+            else:
+                logging.debug(
+                    f"ffprobe failed: {ffprobe_result.stderr.decode(errors='ignore')}"
+                )
+        except subprocess.TimeoutExpired:
+            logging.debug("ffprobe timed out.")
         except Exception as e:
-            logging.debug(f"Exception during request: {e}")
+            logging.debug(f"Error running ffprobe: {e}")
         if attempt < RETRIES - 1:
-            logging.debug(f"Sleeping for {retry_delay}s before next attempt.")
             time.sleep(retry_delay)
-    return handle_dead_channel(url, url)
+
+    if diagnostics_dir and diagnostics:
+        os.makedirs(diagnostics_dir, exist_ok=True)
+        safe_url = url.replace("/", "_").replace(":", "_").replace("?", "_")
+        diag_path = os.path.join(diagnostics_dir, f"{safe_url}.json")
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if ffprobe_success >= attempts * 0.7:
+        print(f"[ALIVE] {url}")
+        return "ALIVE"
+    elif ffprobe_success > 0:
+        print(f"[UNSTABLE] {url}")
+        return "UNSTABLE"
+    else:
+        print(f"[DEAD] {url}")
+        return handle_dead_channel(url, url)
 
 
 def handle_dead_channel(name, url):
@@ -167,7 +168,7 @@ def get_playlist_source():
     return user_input
 
 
-def check_channels(source, retry_delay, max_workers):
+def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
     pl = load_playlist(source)
     channels = pl.get_channels()
     total = len(channels)
@@ -179,7 +180,7 @@ def check_channels(source, retry_delay, max_workers):
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(is_channel_alive, ch.url, retry_delay): ch
+            executor.submit(is_channel_alive, ch.url, retry_delay, diagnostics_dir): ch
             for ch in channels
         }
         with tqdm(total=total, desc="Progress", unit="ch", ncols=80) as progress_bar:
@@ -208,12 +209,13 @@ def main():
     source = get_playlist_source()
     retry_delay = get_retry_delay()
     max_workers = get_max_workers()
+    diagnostics_dir = "diagnostics"  # Set to None to disable diagnostics
     pl = load_playlist(source)
     channels = pl.get_channels()
     channel_map = {ch.url: ch for ch in channels}
     extinf_map = {ch.url: getattr(ch, "original_extinf", None) for ch in channels}
     extgrp_map = {ch.url: getattr(ch, "extgrp", None) for ch in channels}
-    results = check_channels(source, retry_delay, max_workers)
+    results = check_channels(source, retry_delay, max_workers, diagnostics_dir)
     for name, url, status in results:
         logging.info(f"{name}: {status} ({url})")
     alive_channels = [r for r in results if r[2] == "ALIVE"]
