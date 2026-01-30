@@ -183,25 +183,22 @@ def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
             executor.submit(is_channel_alive, ch.url, retry_delay, diagnostics_dir): ch
             for ch in channels
         }
-        with tqdm(total=total, desc="Progress", unit="ch", ncols=80) as progress_bar:
-            for idx, future in enumerate(as_completed(futures), 1):
-                ch = futures[future]
-                status = future.result()
-                results.append((ch.name, ch.url, status))
-                if status == "DEAD":
-                    dead_count += 1
-                    handle_dead_channel(ch.name, ch.url)
-                elif status == "UNSTABLE":
-                    unstable_count += 1
-                progress_bar.update(1)
-                progress_bar.set_postfix(
-                    {"Dead": dead_count, "Unstable": unstable_count}
+        idx = 0
+        for future in as_completed(futures):
+            idx += 1
+            ch = futures[future]
+            status = future.result()
+            results.append((ch.name, ch.url, status))
+            if status == "DEAD":
+                dead_count += 1
+                handle_dead_channel(ch.name, ch.url)
+            elif status == "UNSTABLE":
+                unstable_count += 1
+            if idx % 10 == 0 or idx == total:
+                logging.info(
+                    f"{idx}/{total} checked, {dead_count} dead, {unstable_count} unstable"
                 )
-                if idx % 10 == 0 or idx == total:
-                    logging.info(
-                        f"{idx}/{total} checked, {dead_count} dead, {unstable_count} unstable"
-                    )
-            print()
+        print()
     return results
 
 
