@@ -1,0 +1,64 @@
+# M3uchecker
+
+A tool for checking the health of IPTV channels in M3U playlist. This script checks which channels are alive, unstable, or dead, and produce a filtered playlist of working channels.
+
+## Features
+
+- Check the health of IPTV channels in M3U playlists
+- Parallel processing for faster checks
+- Retry mechanism for unstable channels
+- Configurable retry delay and maximum workers
+- Log results and diagnosis for each channel
+- Produces a new playlist with the channels that are alive
+
+## Requirements
+
+- Python 3.7+
+- pip
+
+Get Python dependencies:
+
+```cmd
+pip install -r requirements.txt
+```
+
+## Use
+
+Run health check script:
+
+```cmd
+python m3u_health_check.py
+```
+
+If you didn't config the config.py file (check [Configuration](#configuration)), the script will prompt you for the following information:
+
+- M3u playlist file path or url
+- Delay between retries (seconds)
+- Number of parallel checks
+
+After completion, a file called `alive_channels.m3u` will be made with all working channels.
+
+## Configuration
+
+You can edit the 'config.py' file to set the options before runtime:
+
+```Python
+# You can set either a file path or a URL, leave one of them empty
+URL = "http://example.com/playlist.m3u"
+FILE_PATH = "channels_to_check.m3u"
+# If you set them as None, the script will prompt you
+Retry_delay_in_seconds = 0.3
+Max_workers = 50
+# If there is authentication, set the username and password
+USERNAME = "user"
+PASSWORD = "pass"
+```
+
+## Logging and Diagnostics
+
+- Logs are written on m3u_checker.log
+- Diagnosis for each channel is saved in 'Diagnostics/' Directory
+
+## License
+
+The project is licensed under GNU General Public License V3.0. See [LICENSE](LICENSE) for details.
