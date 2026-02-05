@@ -39,74 +39,6 @@ def get_max_workers():
     return int(user_input)
 
 
-def is_channel_alive(url, retry_delay, diagnostics_dir=None):
-    import subprocess
-    import json
-    import os
-
-    try:
-        auth = None
-        if config and hasattr(config, "USERNAME") and hasattr(config, "PASSWORD"):
-            auth = (config.USERNAME, config.PASSWORD)
-        headers = {"User-Agent": "VLC/3.0.11 LibVLC/3.0.11"}
-        attempts = 0
-        ffprobe_success = 0
-        diagnostics = None
-        for attempt in range(RETRIES):
-            attempts += 1
-            try:
-                ffprobe_cmd = [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_streams",
-                    "-show_format",
-                    "-print_format",
-                    "json",
-                    "-user_agent",
-                    headers["User-Agent"],
-                    "-headers",
-                    "Referer: http://localhost/\r\nOrigin: http://localhost/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nConnection: keep-alive\r\n",
-                    "-timeout",
-                    "5000000",
-                    url,
-                ]
-                ffprobe_result = subprocess.run(
-                    ffprobe_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=7,
-                )
-                if ffprobe_result.returncode == 0:
-                    ffprobe_success += 1
-                    try:
-                        diagnostics = json.loads(ffprobe_result.stdout.decode())
-                    except Exception:
-                        diagnostics = None
-                    break
-            except subprocess.TimeoutExpired:
-                logging.debug("ffprobe timed out.")
-            except Exception as e:
-                logging.debug(f"Error running ffprobe: {e}")
-            if attempt < RETRIES - 1:
-                time.sleep(retry_delay)
-        if diagnostics_dir and diagnostics:
-            os.makedirs(diagnostics_dir, exist_ok=True)
-            safe_url = url.replace("/", "_").replace(":", "_").replace("?", "_")
-            diag_path = os.path.join(diagnostics_dir, f"{safe_url}.json")
-            with open(diag_path, "w") as f:
-                json.dump(diagnostics, f, indent=2)
-        if ffprobe_success > 0:
-            logging.info(f"[ALIVE] {url}")
-            return "ALIVE"
-        else:
-            logging.info(f"[DEAD] {url}")
-            return handle_dead_channel(url, url)
-    except Exception as e:
-        logging.error(f"Error checking {url}: {e}")
-        return "ERROR"
-
-
 def handle_dead_channel(name, url):
     try:
         logging.info(f"Handling dead channel: {name} ({url})")
@@ -175,10 +107,11 @@ def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
         dead_count = 0
         timeout_samples = []
         avg_timeout = [8]
-        timeout_buffer = 2
+        timeout_buffer = 3
         initial_timeout = 10
+        batch_size = min(25, max(10, total // 10))
 
-        def is_channel_alive_dynamic(
+        def is_channel_alive(
             url, retry_delay, diagnostics_dir=None, timeout_override=None
         ):
             import subprocess
@@ -186,118 +119,105 @@ def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
             import os
 
             try:
-                auth = None
-                if (
-                    config
-                    and hasattr(config, "USERNAME")
-                    and hasattr(config, "PASSWORD")
-                ):
-                    auth = (config.USERNAME, config.PASSWORD)
                 headers = {"User-Agent": "VLC/3.0.11 LibVLC/3.0.11"}
-                attempts = 0
-                ffprobe_success = 0
-                diagnostics = None
-                for attempt in range(RETRIES):
-                    attempts += 1
-                    try:
-                        ffprobe_cmd = [
-                            "ffprobe",
-                            "-v",
-                            "error",
-                            "-show_streams",
-                            "-show_format",
-                            "-print_format",
-                            "json",
-                            "-user_agent",
-                            headers["User-Agent"],
-                            "-headers",
-                            "Referer: http://localhost/\r\nOrigin: http://localhost/\r\nAccept: */*\r\nAccept-Language: en-US,en;q=0.9\r\nConnection: keep-alive\r\n",
-                            url,
-                        ]
-                        ffprobe_result = subprocess.run(
-                            ffprobe_cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            timeout=(
-                                timeout_override
-                                if timeout_override
-                                else initial_timeout
-                            ),
-                        )
-                        if ffprobe_result.returncode == 0:
-                            ffprobe_success += 1
-                            try:
-                                diagnostics = json.loads(ffprobe_result.stdout.decode())
-                            except Exception:
-                                pass
-                            break
-                    except subprocess.TimeoutExpired:
-                        pass
-                    except Exception:
-                        pass
+                ffprobe_cmd = [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=width,height,codec_name",
+                    "-print_format",
+                    "json",
+                    "-user_agent",
+                    headers["User-Agent"],
+                    url,
+                ]
 
-                    if attempt < RETRIES - 1:
-                        time.sleep(retry_delay)
-                if diagnostics_dir and diagnostics:
-                    os.makedirs(diagnostics_dir, exist_ok=True)
-                    safe_url = url.replace("/", "_").replace(":", "_").replace("?", "_")
-                    diag_path = os.path.join(diagnostics_dir, f"{safe_url}.json")
-                    with open(diag_path, "w") as f:
-                        json.dump(diagnostics, f, indent=2)
-                if ffprobe_success > 0:
+                actual_timeout = timeout_override if timeout_override else 7
+                ffprobe_result = subprocess.run(
+                    ffprobe_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=actual_timeout,
+                )
+
+                if ffprobe_result.returncode == 0:
+                    try:
+                        diagnostics = json.loads(ffprobe_result.stdout.decode())
+                        if diagnostics_dir:
+                            os.makedirs(diagnostics_dir, exist_ok=True)
+                            safe_url = (
+                                url.replace("/", "_")
+                                .replace(":", "_")
+                                .replace("?", "_")
+                            )
+                            diag_path = os.path.join(
+                                diagnostics_dir, f"{safe_url}.json"
+                            )
+                            with open(diag_path, "w") as f:
+                                json.dump(diagnostics, f, indent=2)
+                    except:
+                        pass
                     return "ALIVE"
-                else:
-                    return handle_dead_channel(url, url)
-            except Exception as e:
-                return "ERROR"
+
+                if retry_delay > 0:
+                    time.sleep(retry_delay)
+
+                ffprobe_cmd[3:5] = []
+                ffprobe_result = subprocess.run(
+                    ffprobe_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=actual_timeout,
+                )
+
+                if ffprobe_result.returncode == 0:
+                    return "ALIVE"
+                return handle_dead_channel(url, url)
+            except:
+                return "DEAD"
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(
-                    is_channel_alive_dynamic, ch.url, retry_delay, diagnostics_dir, None
-                ): ch
-                for ch in channels
-            }
-            idx = 0
-            for future in as_completed(futures):
-                idx += 1
-                ch = futures[future]
-                t0 = time.time()
-                status = future.result()
-                t1 = time.time()
-                elapsed = t1 - t0
-                if status == "ALIVE":
-                    timeout_samples.append(elapsed)
-                results.append((ch.name, ch.url, status))
-                if idx % 10 == 0 or idx == total:
-                    logging.info(
-                        f"{idx}/{total} checked, {sum(1 for r in results if r[2]=='DEAD')} dead"
-                    )
-            if timeout_samples:
-                avg = sum(timeout_samples) / len(timeout_samples)
-                avg_timeout[0] = avg + timeout_buffer
-            logging.info(f"Using timeout {avg_timeout[0]:.2f}s for remaining checks")
-            remaining_channels = [
-                ch
-                for ch in channels
-                if (ch.name, ch.url, "ALIVE") not in results
-                and (ch.name, ch.url, "DEAD") not in results
-            ]
-            if remaining_channels:
+            for i in range(0, total, batch_size):
+                batch_channels = channels[i : i + batch_size]
                 futures = {
                     executor.submit(
-                        is_channel_alive_dynamic,
+                        is_channel_alive,
                         ch.url,
                         retry_delay,
                         diagnostics_dir,
-                        avg_timeout[0],
+                        None,
                     ): ch
-                    for ch in remaining_channels
+                    for ch in batch_channels
                 }
+
                 for future in as_completed(futures):
                     ch = futures[future]
+                    t0 = time.time()
                     status = future.result()
+                    t1 = time.time()
+                    if status == "ALIVE":
+                        timeout_samples.append(t1 - t0)
+                        if len(timeout_samples) >= 5:
+                            avg = sum(timeout_samples) / len(timeout_samples)
+                            avg_timeout[0] = min(30, avg + timeout_buffer)
                     results.append((ch.name, ch.url, status))
+                    if status == "DEAD":
+                        dead_count += 1
+
+                if timeout_samples:
+                    logging.info(
+                        f"{min(i+batch_size, total)}/{total} checked, {dead_count} dead, timeout: {avg_timeout[0]:.2f}s"
+                    )
+                else:
+                    logging.info(
+                        f"{min(i+batch_size, total)}/{total} checked, {dead_count} dead"
+                    )
+
+                next_batch = channels[i + batch_size : i + batch_size * 2]
+
         print()
         return results
     except Exception as e:
