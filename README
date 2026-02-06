@@ -5,11 +5,13 @@ A tool for checking the health of IPTV channels in M3U playlist. This script che
 ## Features
 
 - Check the health of IPTV channels in M3U playlists
+- Supports both file paths and URLs for M3U playlists
 - Parallel processing for faster checks
 - Retry mechanism for unstable channels
 - Configurable retry delay and maximum workers
 - Log results and diagnosis for each channel
-- Produces a new playlist with the channels that are alive
+- Produces a new playlist with the channels that are alive, unstable and dead
+
 
 ## Requirements
 

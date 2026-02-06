@@ -96,6 +96,55 @@ def get_playlist_source():
         return None
 
 
+def get_channel_status(url, retry_delay, diagnostics_dir=None, timeout_override=None):
+    import subprocess
+    import json
+    import os
+
+    headers = {"User-Agent": "VLC/3.0.11 LibVLC/3.0.11"}
+    base_cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=width,height,codec_name",
+        "-print_format",
+        "json",
+        "-user_agent",
+        headers["User-Agent"],
+        url,
+    ]
+    probe_variants = [["-select_streams", "v:0"], []]
+    actual_timeout = timeout_override if timeout_override else 7
+    for variant in probe_variants:
+        cmd = base_cmd.copy()
+        cmd[3:3] = variant
+        try:
+            ffprobe_result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=actual_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return "UNSTABLE"
+        if ffprobe_result.returncode == 0:
+            try:
+                diagnostics = json.loads(ffprobe_result.stdout.decode())
+                if diagnostics_dir:
+                    os.makedirs(diagnostics_dir, exist_ok=True)
+                    safe_url = url.replace("/", "_").replace(":", "_").replace("?", "_")
+                    diag_path = os.path.join(diagnostics_dir, f"{safe_url}.json")
+                    with open(diag_path, "w") as f:
+                        json.dump(diagnostics, f, indent=2)
+            except:
+                pass
+            return "ALIVE"
+        if retry_delay > 0:
+            time.sleep(retry_delay)
+    return handle_dead_channel(url, url)
+
+
 def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
     try:
         pl = load_playlist(source)
@@ -110,74 +159,14 @@ def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
         timeout_buffer = 3
         initial_timeout = 10
         batch_size = min(25, max(10, total // 10))
+        alive_since_last_avg = 0
 
         def is_channel_alive(
             url, retry_delay, diagnostics_dir=None, timeout_override=None
         ):
-            import subprocess
-            import json
-            import os
-
-            try:
-                headers = {"User-Agent": "VLC/3.0.11 LibVLC/3.0.11"}
-                ffprobe_cmd = [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "v:0",
-                    "-show_entries",
-                    "stream=width,height,codec_name",
-                    "-print_format",
-                    "json",
-                    "-user_agent",
-                    headers["User-Agent"],
-                    url,
-                ]
-
-                actual_timeout = timeout_override if timeout_override else 7
-                ffprobe_result = subprocess.run(
-                    ffprobe_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=actual_timeout,
-                )
-
-                if ffprobe_result.returncode == 0:
-                    try:
-                        diagnostics = json.loads(ffprobe_result.stdout.decode())
-                        if diagnostics_dir:
-                            os.makedirs(diagnostics_dir, exist_ok=True)
-                            safe_url = (
-                                url.replace("/", "_")
-                                .replace(":", "_")
-                                .replace("?", "_")
-                            )
-                            diag_path = os.path.join(
-                                diagnostics_dir, f"{safe_url}.json"
-                            )
-                            with open(diag_path, "w") as f:
-                                json.dump(diagnostics, f, indent=2)
-                    except:
-                        pass
-                    return "ALIVE"
-
-                if retry_delay > 0:
-                    time.sleep(retry_delay)
-
-                ffprobe_cmd[3:5] = []
-                ffprobe_result = subprocess.run(
-                    ffprobe_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=actual_timeout,
-                )
-
-                if ffprobe_result.returncode == 0:
-                    return "ALIVE"
-                return handle_dead_channel(url, url)
-            except:
-                return "DEAD"
+            return get_channel_status(
+                url, retry_delay, diagnostics_dir, timeout_override
+            )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for i in range(0, total, batch_size):
@@ -200,21 +189,22 @@ def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
                     t1 = time.time()
                     if status == "ALIVE":
                         timeout_samples.append(t1 - t0)
-                        if len(timeout_samples) >= 5:
-                            avg = sum(timeout_samples) / len(timeout_samples)
-                            avg_timeout[0] = min(30, avg + timeout_buffer)
+                        alive_since_last_avg += 1
                     results.append((ch.name, ch.url, status))
                     if status == "DEAD":
                         dead_count += 1
-
-                if timeout_samples:
-                    logging.info(
-                        f"{min(i+batch_size, total)}/{total} checked, {dead_count} dead, timeout: {avg_timeout[0]:.2f}s"
-                    )
-                else:
-                    logging.info(
-                        f"{min(i+batch_size, total)}/{total} checked, {dead_count} dead"
-                    )
+                    if alive_since_last_avg >= 20:
+                        if timeout_samples:
+                            avg = sum(timeout_samples) / len(timeout_samples)
+                            avg_timeout[0] = min(30, avg + timeout_buffer)
+                            logging.info(
+                                f"{min(i+batch_size, total)}/{total} checked, {dead_count} dead, average timeout: {avg:.2f}s"
+                            )
+                        else:
+                            logging.info(
+                                f"{min(i+batch_size, total)}/{total} checked, {dead_count} dead"
+                            )
+                        alive_since_last_avg = 0
 
                 next_batch = channels[i + batch_size : i + batch_size * 2]
 
@@ -223,6 +213,50 @@ def check_channels(source, retry_delay, max_workers, diagnostics_dir=None):
     except Exception as e:
         logging.error(f"Error checking channels: {e}")
         return []
+
+
+def write_channels_to_m3u(
+    filename,
+    channels,
+    channel_map,
+    extinf_map,
+    extgrp_map,
+    status_filter=None,
+    mode="w",
+):
+    with open(filename, mode, encoding="utf-8") as f:
+        if mode == "w":
+            f.write("#EXTM3U\n")
+        for name, url, status in channels:
+            if status_filter and status != status_filter:
+                continue
+            ch = channel_map.get(url)
+            extinf = extinf_map.get(url)
+            extgrp = extgrp_map.get(url)
+            if extinf:
+                extinf_parts = extinf.split(",", 1)
+                if len(extinf_parts) > 1:
+                    f.write(f"{extinf_parts[0]},{name}\n")
+                else:
+                    f.write(f"{extinf},{name}\n")
+            else:
+                extinf_attrs = []
+                if hasattr(ch, "tvg_id") and ch.tvg_id:
+                    extinf_attrs.append(f'tvg-id="{ch.tvg_id}"')
+                if hasattr(ch, "tvg_name") and ch.tvg_name:
+                    extinf_attrs.append(f'tvg-name="{ch.tvg_name}"')
+                if hasattr(ch, "tvg_logo") and ch.tvg_logo:
+                    extinf_attrs.append(f'tvg-logo="{ch.tvg_logo}"')
+                group = (
+                    getattr(ch, "group_title", None) or getattr(ch, "group", None) or ""
+                )
+                if group:
+                    extinf_attrs.append(f'group-title="{group}"')
+                extinf_str = " ".join(extinf_attrs)
+                f.write(f"#EXTINF:-1 {extinf_str},{name}\n")
+            if extgrp:
+                f.write(f"#EXTGRP:{extgrp}\n")
+            f.write(f"{url}\n")
 
 
 def main():
@@ -249,38 +283,9 @@ def main():
     dead_channels = [r for r in results if r[2] == "DEAD"]
     playlist_channels = alive_channels + unstable_channels
     if playlist_channels:
-        with open("alive_channels.m3u", "w", encoding="utf-8") as f:
-            f.write("#EXTM3U\n")
-            for name, url, status in playlist_channels:
-                ch = channel_map.get(url)
-                extinf = extinf_map.get(url)
-                extgrp = extgrp_map.get(url)
-                if extinf:
-                    extinf_parts = extinf.split(",", 1)
-                    if len(extinf_parts) > 1:
-                        f.write(f"{extinf_parts[0]},{name}\n")
-                    else:
-                        f.write(f"{extinf},{name}\n")
-                else:
-                    extinf_attrs = []
-                    if hasattr(ch, "tvg_id") and ch.tvg_id:
-                        extinf_attrs.append(f'tvg-id="{ch.tvg_id}"')
-                    if hasattr(ch, "tvg_name") and ch.tvg_name:
-                        extinf_attrs.append(f'tvg-name="{ch.tvg_name}"')
-                    if hasattr(ch, "tvg_logo") and ch.tvg_logo:
-                        extinf_attrs.append(f'tvg-logo="{ch.tvg_logo}"')
-                    group = (
-                        getattr(ch, "group_title", None)
-                        or getattr(ch, "group", None)
-                        or ""
-                    )
-                    if group:
-                        extinf_attrs.append(f'group-title="{group}"')
-                    extinf_str = " ".join(extinf_attrs)
-                    f.write(f"#EXTINF:-1 {extinf_str},{name}\n")
-                if extgrp:
-                    f.write(f"#EXTGRP:{extgrp}\n")
-                f.write(f"{url}\n")
+        write_channels_to_m3u(
+            "alive_channels.m3u", playlist_channels, channel_map, extinf_map, extgrp_map
+        )
         print(
             f"Wrote {len(playlist_channels)} alive or unstable channels to alive_channels.m3u"
         )
@@ -320,9 +325,63 @@ def main():
                 if extgrp:
                     f.write(f"#EXTGRP:{extgrp}\n")
                 f.write(f"{url}\n")
-        print(f"Wrote {len(dead_channels)} dead channels to dead_channels.m3u")
+        print(f"Wrote {len(dead_channels)} to dead_channels.m3u")
     else:
         print("No dead channels found.")
+
+    import os
+
+    if unstable_channels:
+        logging.info(
+            f"{len(unstable_channels)} channels were marked as UNSTABLE due to timeout."
+        )
+        answer = (
+            input(
+                f"Do you want to test the {len(unstable_channels)} unstable channels again with a longer timeout? (y/n): "
+            )
+            .strip()
+            .lower()
+        )
+        if answer == "y":
+            longer_timeout = 30
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            retest_results = []
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_channel = {
+                    executor.submit(
+                        get_channel_status,
+                        url,
+                        retry_delay,
+                        diagnostics_dir,
+                        longer_timeout,
+                    ): (name, url, status)
+                    for name, url, status in unstable_channels
+                }
+                for future in as_completed(future_to_channel):
+                    name, url, _ = future_to_channel[future]
+                    status2 = future.result()
+                    retest_results.append((name, url, status2))
+            if os.path.exists("unstable_channels.m3u"):
+                os.remove("unstable_channels.m3u")
+            write_channels_to_m3u(
+                "unstable_channels.m3u",
+                [r for r in retest_results if r[2] == "ALIVE"],
+                channel_map,
+                extinf_map,
+                extgrp_map,
+                status_filter=None,
+                mode="w",
+            )
+            write_channels_to_m3u(
+                "dead_channels.m3u",
+                [r for r in retest_results if r[2] != "ALIVE"],
+                channel_map,
+                extinf_map,
+                extgrp_map,
+                status_filter=None,
+                mode="a",
+            )
 
 
 if __name__ == "__main__":
