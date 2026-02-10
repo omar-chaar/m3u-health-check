@@ -1,2 +1,4 @@
 m3u-ipytv
 requests
+flask
+flasgger
