@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "m3uchecker"
+version = "1.0.0"
+description = "A tool for checking the health of IPTV channels in M3U playlists"
+requires-python = ">=3.9"
+
+dependencies = [
+    "m3u-ipytv",
+    "requests",
+    "flask",
+    "flasgger",
+    "google-generativeai",
+    "python-dotenv",
+]
+
+[project.scripts]
+m3uchecker = "m3uchecker.health_check:main"
+m3u-organizer = "m3uchecker.organizer:main"
+m3u-filter = "m3uchecker.filter:main"
+m3u-api = "m3uchecker.api.flask_app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

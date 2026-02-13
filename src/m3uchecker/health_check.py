@@ -6,14 +6,18 @@ import sys
 from urllib.parse import urlparse
 import time
 import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 try:
+    sys.path.insert(0, str(PROJECT_ROOT))
     import config
 except ImportError:
     config = None
 
 logging.basicConfig(
-    filename="m3u_checker.log",
+    filename=PROJECT_ROOT / "m3u_checker.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
@@ -21,8 +25,8 @@ logging.basicConfig(
 TIMEOUT = 10
 RETRIES = 10
 
-OUTPUT_DIR = "output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+OUTPUT_DIR = PROJECT_ROOT / "output"
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 def get_retry_delay():
