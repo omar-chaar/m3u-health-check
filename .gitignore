@@ -25,15 +25,6 @@ dist/
 build/
 .eggs/
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Test/coverage
-.pytest_cache/
-.tox/
-.coverage
-
 # mypy
 .mypy_cache/
 
@@ -44,7 +35,6 @@ pip-delete-this-directory.txt
 *.log
 logs/
 
-#Specific to this project
 *.m3u8
 *.m3u
 /diagnostics
