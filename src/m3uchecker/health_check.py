@@ -9,10 +9,6 @@ import time
 import os
 from pathlib import Path
 
-<<<<<<< HEAD
-=======
-# Get project root (two levels up from this file)
->>>>>>> ff7207d (refactor: Simplified Flask API, added integration of Gemini AI for channel organization)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 try:
