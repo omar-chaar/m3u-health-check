@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-M3U Playlist Organizer - Uses Gemini AI to rename and recategorize channels.
-"""
-
 import os
 import sys
 import json

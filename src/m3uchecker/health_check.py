@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ipytv import playlist
@@ -8,7 +9,6 @@ import time
 import os
 from pathlib import Path
 
-# Get project root (two levels up from this file)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 try:

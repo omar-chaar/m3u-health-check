@@ -14,8 +14,6 @@ def get_playlist_source_api():
     """
     Get Playlist Source
     ---
-    tags:
-      - Playlist
     parameters:
       - name: body
         in: body
@@ -25,19 +23,11 @@ def get_playlist_source_api():
           properties:
             url:
               type: string
-              description: URL of the playlist
             file_path:
               type: string
-              description: Path to the playlist file
     responses:
       200:
         description: Successfully retrieved the playlist source
-        schema:
-          type: object
-          properties:
-            source:
-              type: string
-              description: The playlist source
       400:
         description: No valid source provided
     """
@@ -60,8 +50,6 @@ def check_channels_api():
     """
     Check Channels and Return Alive Playlist
     ---
-    tags:
-      - Channels
     parameters:
       - name: body
         in: body
@@ -71,36 +59,18 @@ def check_channels_api():
           properties:
             source:
               type: string
-              description: Playlist source (URL or file path)
             retry_delay:
               type: number
-              description: Delay between retries in seconds
               default: 0.3
             max_workers:
               type: integer
-              description: Number of parallel checks
               default: 10
             diagnostics_dir:
               type: string
-              description: Directory to save diagnostics
               default: "diagnostics"
     responses:
       200:
-        description: Successfully checked channels and returned M3U playlist of alive channels.
-        content:
-          application/vnd.apple.mpegurl:
-            schema:
-              type: string 
-              format: text
-          audio/mpegurl: # Another common M3U MIME type
-            schema:
-              type: string
-              format: text
-        headers:
-          Content-Disposition:
-            type: string
-            description: Suggests a filename for the downloaded playlist.
-            example: attachment; filename="alive_channels.m3u"
+        description: Returns M3U playlist of alive channels
       400:
         description: Invalid playlist source
       500:
@@ -152,6 +122,41 @@ def check_channels_api():
     except Exception as e:
         logging.error(f"Error in check_channels_api: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/get_cached_playlist", methods=["GET"])
+def get_cached_playlist_api():
+    """
+    Get Cached Playlist
+    ---
+    responses:
+      200:
+        description: Returns cached playlist file
+      404:
+        description: No cached playlist found
+      500:
+        description: Server error
+    """
+    try:
+        final_file = output_dir / "final_channels."
+        if not final_file.exists():
+            return (
+                jsonify(
+                    {
+                        "error": "No cached playlist found, use the /cache_playlist endpoint first."
+                    }
+                ),
+                404,
+            )
+        content = final_file.read_text(encoding="utf-8")
+        response = Response(content, mimetype="application/vnd.apple.mpegurl")
+        response.headers["Content-Disposition"] = (
+            "attachment; filename=final_channels.m3u"
+        )
+        return response
+    except Exception as exception:
+        logging.error(f"Error in get_cached_playlist_api: {exception}")
+        return jsonify({"error": str(exception)}), 500
 
 
 if __name__ == "__main__":

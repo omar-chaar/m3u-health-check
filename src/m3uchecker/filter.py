@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-M3U Playlist Filter - Filter channels by keywords in title or group.
-"""
-
 import os
 import sys
 from urllib.parse import urlparse
