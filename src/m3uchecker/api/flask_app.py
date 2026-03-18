@@ -1,8 +1,9 @@
 from flask import Flask, request, jsonify, Response
 import logging
 import os
-from m3u_health_check import load_playlist, check_channels
+from m3uchecker.health_check import load_playlist, check_channels
 from flasgger import Swagger
+import time
 
 app = Flask(__name__)
 
@@ -124,6 +125,14 @@ def check_channels_api():
         return jsonify({"error": str(e)}), 500
 
 
+from m3uchecker.api.cache import (
+    FINAL_PLAYLIST_FILE,
+    CACHE_MAX_AGE_SECONDS,
+    get_last_best_workers,
+    trigger_refresh_async,
+)
+
+
 @app.route("/get_cached_playlist", methods=["GET"])
 def get_cached_playlist_api():
     """
@@ -131,32 +140,44 @@ def get_cached_playlist_api():
     ---
     responses:
       200:
-        description: Returns cached playlist file
+      description: Returns cached playlist file (may be stale)
       404:
-        description: No cached playlist found
+      description: No cached playlist found
       500:
-        description: Server error
+      description: Server error
     """
     try:
-        final_file = output_dir / "final_channels."
-        if not final_file.exists():
+        if not os.path.exists(FINAL_PLAYLIST_FILE):
+            refresh_started = trigger_refresh_async()
             return (
                 jsonify(
                     {
-                        "error": "No cached playlist found, use the /cache_playlist endpoint first."
+                        "error": "No cached playlist found.",
+                        "refresh_started": refresh_started,
                     }
                 ),
                 404,
             )
-        content = final_file.read_text(encoding="utf-8")
+
+        is_stale = (
+            time.time() - os.path.getmtime(FINAL_PLAYLIST_FILE)
+        ) > CACHE_MAX_AGE_SECONDS
+        refresh_started = trigger_refresh_async() if is_stale else False
+
+        with open(FINAL_PLAYLIST_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+
         response = Response(content, mimetype="application/vnd.apple.mpegurl")
         response.headers["Content-Disposition"] = (
             "attachment; filename=final_channels.m3u"
         )
+        response.headers["X-Cache-Stale"] = str(is_stale).lower()
+        response.headers["X-Refresh-Started"] = str(refresh_started).lower()
+        response.headers["X-Benchmark-Workers"] = str(get_last_best_workers())
         return response
-    except Exception as exception:
-        logging.error(f"Error in get_cached_playlist_api: {exception}")
-        return jsonify({"error": str(exception)}), 500
+    except Exception as e:
+        logging.error(f"Error in get_cached_playlist_api: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

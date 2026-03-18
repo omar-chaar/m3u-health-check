@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
+z
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Username for m3u/m3u8 playlists
 USERNAME = os.getenv("USERNAME")
