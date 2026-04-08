@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ipytv import playlist
@@ -357,21 +357,27 @@ def main():
                 mode="a",
             )
 
+
 def create_final_channel_playlist():
     ## organize channels into groups based on extgrp, group title and channel name, using organizer.py
     try:
         from organizer import organize_channels
+
         main()
         alive_path = OUTPUT_DIR / "alive_channels.m3u"
         unstatable_path = OUTPUT_DIR / "unstable_channels.m3u"
-        #append both playlists
-        appended_playlist = alive_path.read_text(encoding="utf-8") + "\n"+ unstatable_path.read_text(encoding="utf-8")"
+        # append both playlists
+        appended_playlist = (
+            alive_path.read_text(encoding="utf-8")
+            + "\n"
+            + unstatable_path.read_text(encoding="utf-8")
+        )
         organize_channels(alive_path, OUTPUT_DIR / "final_channels.m3u")
     except FileNotFoundError as e:
         logging.error(f"File not found during final playlist creation: {e}")
     except Exception as e:
-        logging.error(f"Error creating final channel playlist: {e}")       
-        
+        logging.error(f"Error creating final channel playlist: {e}")
+
 
 if __name__ == "__main__":
     main()

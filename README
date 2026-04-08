@@ -15,21 +15,33 @@ A tool for checking the health of IPTV channels in M3U playlist. This script che
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.9+
 - pip
 
-Get Python dependencies:
+Install the package (and dependencies):
 
-```cmd
-pip install -r requirements.txt
+```sh
+pip install .
+```
+
+For local development, use editable install:
+
+```sh
+pip install -e .
 ```
 
 ## Use
 
-Run health check script:
+Run health check:
 
-```cmd
-python m3u_health_check.py
+```sh
+m3uchecker
+```
+
+Equivalent module invocation:
+
+```sh
+python -m m3uchecker.health_check
 ```
 
 If you didn't config the config.py file (check [Configuration](#configuration)), the script will prompt you for the following information:
@@ -38,19 +50,22 @@ If you didn't config the config.py file (check [Configuration](#configuration)),
 - Delay between retries (seconds)
 - Number of parallel checks
 
-After completion, a file called `alive_channels.m3u` will be made with all working channels.
+After completion, output playlists are written in the `output/` directory:
+
+- `output/alive_channels.m3u`
+- `output/dead_channels.m3u`
 
 ## Configuration
 
 You can edit the 'config.py' file to set the options before runtime:
 
-```Python
+```python
 # You can set either a file path or a URL, leave one of them empty
 URL = "http://example.com/playlist.m3u"
 FILE_PATH = "channels_to_check.m3u"
 # If you set them as None, the script will prompt you
-Retry_delay_in_seconds = 0.3
-Max_workers = 50
+RETRY_DELAY_IN_SECONDS = 0.3
+MAX_WORKERS = 50
 # If there is authentication, set the username and password
 USERNAME = "user"
 PASSWORD = "pass"
@@ -58,8 +73,8 @@ PASSWORD = "pass"
 
 ## Logging and Diagnostics
 
-- Logs are written on m3u_checker.log
-- Diagnosis for each channel is saved in 'Diagnostics/' Directory
+- Logs are written to `m3u_checker.log`
+- Diagnosis for each channel is saved in `diagnostics/`
 
 ## License
 
