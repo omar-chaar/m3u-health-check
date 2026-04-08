@@ -140,11 +140,11 @@ def get_cached_playlist_api():
     ---
     responses:
       200:
-      description: Returns cached playlist file (may be stale)
+        description: Returns cached playlist file (may be stale)
       404:
-      description: No cached playlist found
+        description: No cached playlist found
       500:
-      description: Server error
+        description: Server error
     """
     try:
         if not os.path.exists(FINAL_PLAYLIST_FILE):
@@ -179,9 +179,11 @@ def get_cached_playlist_api():
         logging.error(f"Error in get_cached_playlist_api: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/ping", methods=["GET"])
 def ping():
     return jsonify({"message": "pong"})
+
 
 def main():
     app.run(host="0.0.0.0", port=5000, debug=True)
