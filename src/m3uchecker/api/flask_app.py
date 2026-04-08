@@ -9,43 +9,6 @@ app = Flask(__name__)
 
 swagger = Swagger(app)
 
-
-@app.route("/get_playlist_source", methods=["POST"])
-def get_playlist_source_api():
-    """
-    Get Playlist Source
-    ---
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          properties:
-            url:
-              type: string
-            file_path:
-              type: string
-    responses:
-      200:
-        description: Successfully retrieved the playlist source
-      400:
-        description: No valid source provided
-    """
-    try:
-        data = request.json
-        url = data.get("url", "")
-        file_path = data.get("file_path", "")
-        if url:
-            return jsonify({"source": url})
-        if file_path:
-            return jsonify({"source": file_path})
-        return jsonify({"error": "No valid source provided"}), 400
-    except Exception as e:
-        logging.error(f"Error in get_playlist_source_api: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
 @app.route("/check_channels", methods=["POST"])
 def check_channels_api():
     """
