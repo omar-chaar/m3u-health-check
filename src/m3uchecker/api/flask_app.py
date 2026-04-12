@@ -9,6 +9,8 @@ app = Flask(__name__)
 
 swagger = Swagger(app)
 
+DEFAULT_TREE_MAX_DEPTH = 4
+TREE_MAX_NODES = 2500
 @app.route("/check_channels", methods=["POST"])
 def check_channels_api():
     """
