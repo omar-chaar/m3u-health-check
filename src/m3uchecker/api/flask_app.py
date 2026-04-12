@@ -148,6 +148,70 @@ def ping():
     return jsonify({"message": "pong"})
 
 
+@app.route("/file_structure", methods=["GET"])
+def file_structure_api():
+    """
+    Show project file structure in browser
+    ---
+    parameters:
+      - name: depth
+        in: query
+        required: false
+        type: integer
+        default: 4
+      - name: include_hidden
+        in: query
+        required: false
+        type: boolean
+        default: false
+    responses:
+      200:
+        description: Returns an HTML view of the project structure
+      500:
+        description: Failed to build file structure
+    """
+    try:
+        depth = request.args.get("depth", default=DEFAULT_TREE_MAX_DEPTH, type=int)
+        include_hidden = request.args.get("include_hidden", "false").lower() == "true"
+
+        if depth is None:
+            depth = DEFAULT_TREE_MAX_DEPTH
+        depth = max(0, min(depth, 12))
+
+        tree_html = _build_file_tree(
+            PROJECT_ROOT,
+            max_depth=depth,
+            include_hidden=include_hidden,
+        )
+
+        html = f"""
+<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>Project File Structure</title>
+  <style>
+    body {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 1.5rem; line-height: 1.35; }}
+    h1 {{ margin: 0 0 0.5rem; }}
+    .meta {{ color: #444; margin-bottom: 1rem; }}
+    ul {{ list-style: none; margin: 0; padding-left: 1rem; border-left: 1px solid #ddd; }}
+    li {{ margin: 0.1rem 0; white-space: nowrap; }}
+  </style>
+</head>
+<body>
+  <h1>Project File Structure</h1>
+  <div class=\"meta\">Root: {escape(PROJECT_ROOT)} | Depth: {depth} | Include hidden: {str(include_hidden).lower()}</div>
+  <ul>{tree_html}</ul>
+</body>
+</html>
+"""
+        return Response(html, mimetype="text/html")
+    except Exception as e:
+        logging.error(f"Error in file_structure_api: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 def main():
     app.run(host="0.0.0.0", port=5000, debug=True)
 
