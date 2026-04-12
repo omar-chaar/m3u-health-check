@@ -7,7 +7,7 @@ from m3uchecker.health_check import check_channels
 
 BENCHMARK_WORKERS = [
     int(x.strip())
-    for x in os.getenv("BENCHMARK_WORKERS", "4,8,10,12,16").split(",")
+    for x in os.getenv("BENCHMARK_WORKERS", "4,8,10,12,16,20,40,60").split(",")
     if x.strip().isdigit()
 ]
 BENCHMARK_CACHE_SECONDS = int(os.getenv("BENCHMARK_CACHE_SECONDS", "3600"))
