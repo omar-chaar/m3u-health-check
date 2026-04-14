@@ -1,19 +1,53 @@
-from flask import Flask, request, jsonify, Response
 import logging
 import os
 import re
-from html import escape
-from m3uchecker.health_check import load_playlist, check_channels
-from flasgger import Swagger
 import time
+from html import escape
+
+
+PROJECT_ROOT = os.path.abspath(
+  os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
+ENV_FILE = os.path.join(PROJECT_ROOT, ".env")
+DEFAULT_ENV_CONTENT = """GEMINI_API_KEY=
+USERNAME=
+PASSWORD=
+PLAYLIST_SOURCE=
+OUTPUT_DIR=output
+CACHE_MAX_AGE_SECONDS=86400
+REFRESH_RETRY_DELAY=0.3
+REFRESH_MAX_WORKERS=10
+REFRESH_DIAGNOSTICS_DIR=diagnostics
+BENCHMARK_WORKERS=4,8,10,12,16
+BENCHMARK_CACHE_SECONDS=3600
+DEFAULT_TREE_MAX_DEPTH=5
+"""
+
+
+def _ensure_env_file():
+  if os.path.exists(ENV_FILE):
+    return False
+
+  try:
+    with open(ENV_FILE, "w", encoding="utf-8") as file_handle:
+      file_handle.write(DEFAULT_ENV_CONTENT)
+    logging.info("Created default .env file at %s", ENV_FILE)
+    return True
+  except Exception:
+    logging.exception("Failed to create default .env file at %s", ENV_FILE)
+    return False
+
+
+_ensure_env_file()
+
+from flask import Flask, request, jsonify, Response
+from flasgger import Swagger
+from m3uchecker.health_check import load_playlist, check_channels
 
 app = Flask(__name__)
 
 swagger = Swagger(app)
 
-PROJECT_ROOT = os.path.abspath(
-  os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
 DEFAULT_TREE_MAX_DEPTH = 4
 TREE_MAX_NODES = 2500
 
