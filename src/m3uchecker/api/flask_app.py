@@ -141,7 +141,7 @@ from m3uchecker.api.cache import (
     FINAL_PLAYLIST_FILE,
     CACHE_MAX_AGE_SECONDS,
     get_last_best_workers,
-    trigger_refresh_async,
+  trigger_refresh_on_background,
 )
 
 
@@ -159,7 +159,7 @@ def trigger_refresh_api():
     """
     try:
         set_playlist_source_api()
-        refresh_started = trigger_refresh_async()
+        refresh_started = trigger_refresh_on_background()
         if refresh_started:
             return jsonify({"message": "Refresh triggered successfully."}), 200
         else:
@@ -187,7 +187,7 @@ def get_final_channels_api():
     """
     try:
         if not os.path.exists(FINAL_PLAYLIST_FILE):
-            refresh_started = trigger_refresh_async()
+            refresh_started = trigger_refresh_on_background()
             return (
                 jsonify(
                     {
@@ -201,7 +201,7 @@ def get_final_channels_api():
         is_stale = (
             time.time() - os.path.getmtime(FINAL_PLAYLIST_FILE)
         ) > CACHE_MAX_AGE_SECONDS
-        refresh_started = trigger_refresh_async() if is_stale else False
+        refresh_started = trigger_refresh_on_background() if is_stale else False
 
         with open(FINAL_PLAYLIST_FILE, "r", encoding="utf-8") as f:
             content = f.read()

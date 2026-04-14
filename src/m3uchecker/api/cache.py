@@ -73,3 +73,7 @@ def trigger_refresh_on_background():
     _refreshing.set()
     threading.Thread(target=_refresh_cached_playlist, daemon=True).start()
     return True
+
+
+def trigger_refresh_async():
+    return trigger_refresh_on_background()
