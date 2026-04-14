@@ -67,7 +67,7 @@ def _refresh_cached_playlist():
         _refreshing.clear()
 
 
-def trigger_refresh_async():
+def trigger_refresh_on_background():
     if _refreshing.is_set():
         return False
     _refreshing.set()

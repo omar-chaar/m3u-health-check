@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, Response
 import logging
 import os
+import re
+from html import escape
 from m3uchecker.health_check import load_playlist, check_channels
 from flasgger import Swagger
 import time
@@ -9,6 +11,9 @@ app = Flask(__name__)
 
 swagger = Swagger(app)
 
+PROJECT_ROOT = os.path.abspath(
+  os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
 DEFAULT_TREE_MAX_DEPTH = 4
 TREE_MAX_NODES = 2500
 
@@ -140,10 +145,37 @@ from m3uchecker.api.cache import (
 )
 
 
-@app.route("/get_cached_playlist", methods=["GET"])
-def get_cached_playlist_api():
+@app.route("/trigger_refresh", methods=["POST"])
+def trigger_refresh_api():
     """
-    Get Cached Playlist
+    Trigger Background Refresh of Cached Playlist
+    ---
+
+    responses:
+      200:
+        description: Refresh triggered successfully
+      500:
+        description: Failed to trigger refresh
+    """
+    try:
+        set_playlist_source_api()
+        refresh_started = trigger_refresh_async()
+        if refresh_started:
+            return jsonify({"message": "Refresh triggered successfully."}), 200
+        else:
+            return (
+                jsonify({"message": "Refresh already in progress."}),
+                200,
+            )
+    except Exception as e:
+        logging.error(f"Error in trigger_refresh_api: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/final_channels.m3u", methods=["GET"])
+def get_final_channels_api():
+    """
+    Get final cached playlist of alive and unstable channels
     ---
     responses:
       200:
@@ -184,6 +216,46 @@ def get_cached_playlist_api():
         return response
     except Exception as e:
         logging.error(f"Error in get_cached_playlist_api: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/set_playlist_source", methods=["POST"])
+def set_playlist_source_api():
+    """
+    Set Playlist Source URL or File Path
+    ---
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            playlist_source:
+              type: string
+    responses:
+      200:
+        description: Playlist source updated successfully
+      400:
+        description: Invalid playlist source
+      500:
+        description: Failed to update playlist source
+    """
+    try:
+        data = request.json
+        playlist_source = (data.get("playlist_source") or "").strip()
+
+        if not playlist_source or not re.match(
+            r"^((?:[a-z0-9-]+\.)+[a-z]{2,}/\S+|.+\.m3u8?)$",
+            playlist_source,
+            re.IGNORECASE,
+        ):
+            return jsonify({"error": "Invalid playlist source"}), 400
+
+        os.environ["PLAYLIST_SOURCE"] = playlist_source
+        return jsonify({"message": "Playlist source updated successfully."}), 200
+    except Exception as e:
+        logging.error(f"Error in set_playlist_source_api: {e}")
         return jsonify({"error": str(e)}), 500
 
 
