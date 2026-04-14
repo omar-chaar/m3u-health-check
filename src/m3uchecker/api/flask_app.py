@@ -11,6 +11,48 @@ swagger = Swagger(app)
 
 DEFAULT_TREE_MAX_DEPTH = 4
 TREE_MAX_NODES = 2500
+
+
+def _build_file_tree(root_path, max_depth=DEFAULT_TREE_MAX_DEPTH, include_hidden=False):
+  nodes_seen = 0
+
+  def walk(path, depth):
+    nonlocal nodes_seen
+    if nodes_seen >= TREE_MAX_NODES:
+      return '<li><span style="color:#8a2be2;">...truncated...</span></li>'
+    if depth > max_depth:
+      return ""
+
+    try:
+      entries = sorted(os.listdir(path), key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower()))
+    except OSError as exc:
+      return f'<li>{escape(os.path.basename(path))}: <em>{escape(str(exc))}</em></li>'
+
+    if not include_hidden:
+      entries = [name for name in entries if not name.startswith(".")]
+
+    items = []
+    for name in entries:
+      if nodes_seen >= TREE_MAX_NODES:
+        items.append('<li><span style="color:#8a2be2;">...truncated...</span></li>')
+        break
+
+      full_path = os.path.join(path, name)
+      nodes_seen += 1
+
+      if os.path.isdir(full_path):
+        child_html = walk(full_path, depth + 1)
+        if child_html:
+          items.append(f"<li><strong>{escape(name)}/</strong><ul>{child_html}</ul></li>")
+        else:
+          items.append(f"<li><strong>{escape(name)}/</strong></li>")
+      else:
+        items.append(f"<li>{escape(name)}</li>")
+
+    return "".join(items)
+
+  return walk(root_path, 0)
+
 @app.route("/check_channels", methods=["POST"])
 def check_channels_api():
     """
