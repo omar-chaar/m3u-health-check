@@ -269,17 +269,6 @@ def file_structure_api():
     """
     Show project file structure in browser
     ---
-    parameters:
-      - name: depth
-        in: query
-        required: false
-        type: integer
-        default: 4
-      - name: include_hidden
-        in: query
-        required: false
-        type: boolean
-        default: false
     responses:
       200:
         description: Returns an HTML view of the project structure
@@ -287,12 +276,8 @@ def file_structure_api():
         description: Failed to build file structure
     """
     try:
-        depth = request.args.get("depth", default=DEFAULT_TREE_MAX_DEPTH, type=int)
-        include_hidden = request.args.get("include_hidden", "false").lower() == "true"
-
-        if depth is None:
-            depth = DEFAULT_TREE_MAX_DEPTH
-        depth = max(0, min(depth, 12))
+        depth = DEFAULT_TREE_MAX_DEPTH
+        include_hidden = False
 
         tree_html = _build_file_tree(
             PROJECT_ROOT,
